@@ -1,11 +1,11 @@
 #!/bin/sh
 #
-# Script to upgrade Libreswan on CentOS and RHEL
+# Script to upgrade Libreswan on Amazon Linux 2
 #
 # The latest version of this script is available at:
 # https://github.com/hwdsl2/setup-ipsec-vpn
 #
-# Copyright (C) 2016-2021 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2020-2021 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -26,27 +26,12 @@ bigecho() { echo "## $1"; }
 
 vpnupgrade() {
 
-os_type=centos
 os_arch=$(uname -m | tr -dc 'A-Za-z0-9_-')
-rh_file="/etc/redhat-release"
-if grep -qs "Red Hat" "$rh_file"; then
-  os_type=rhel
-fi
-if grep -qs "release 7" "$rh_file"; then
-  os_ver=7
-elif grep -qs "release 8" "$rh_file"; then
-  os_ver=8
-  if grep -qi stream "$rh_file"; then
-    os_ver=8s
-  fi
-else
-  echo "Error: This script only supports CentOS/RHEL 7 and 8." >&2
+if ! grep -qs "Amazon Linux release 2" /etc/system-release; then
+  echo "Error: This script only supports Amazon Linux 2." >&2
   echo "For Ubuntu/Debian, use https://git.io/vpnupgrade" >&2
+  echo "For CentOS/RHEL, use https://git.io/vpnupgrade-centos" >&2
   exit 1
-fi
-
-if [ -f /proc/user_beancounters ]; then
-  exiterr "OpenVZ VPS is not supported."
 fi
 
 if [ "$(id -u)" != 0 ]; then
@@ -78,14 +63,14 @@ EOF
 fi
 
 swan_ver_cur=4.4
-swan_ver_url="https://dl.ls20.com/v1/$os_type/$os_ver/swanverupg?arch=$os_arch&ver1=$swan_ver_old&ver2=$SWAN_VER"
+swan_ver_url="https://dl.ls20.com/v1/amzn/2/swanverupg?arch=$os_arch&ver1=$swan_ver_old&ver2=$SWAN_VER"
 swan_ver_latest=$(wget -t 3 -T 15 -qO- "$swan_ver_url")
 if printf '%s' "$swan_ver_latest" | grep -Eq '^([3-9]|[1-9][0-9]{1,2})(\.([0-9]|[1-9][0-9]{1,2})){1,2}$' \
   && [ "$swan_ver_cur" != "$swan_ver_latest" ] \
   && printf '%s\n%s' "$swan_ver_cur" "$swan_ver_latest" | sort -C -V; then
   echo "Note: A newer version of Libreswan ($swan_ver_latest) is available."
   echo "      To update to the new version, exit this script and run:"
-  echo "      wget https://git.io/vpnupgrade-centos -O vpnup.sh && sudo sh vpnup.sh"
+  echo "      wget https://git.io/vpnupgrade-amzn -O vpnup.sh && sudo sh vpnup.sh"
   echo
   printf "Do you want to continue anyway? [y/N] "
   read -r response
@@ -168,26 +153,9 @@ bigecho "Installing required packages..."
   set -x
   yum -y -q install nss-devel nspr-devel pkgconfig pam-devel \
     libcap-ng-devel libselinux-devel curl-devel nss-tools \
-    flex bison gcc make wget sed tar >/dev/null
+    flex bison gcc make wget sed tar \
+    systemd-devel libevent-devel fipscheck-devel >/dev/null
 ) || exiterr2
-
-erp="--enablerepo"
-rp1="$erp=*server-*optional*"
-rp2="$erp=*releases-optional*"
-rp3="$erp=[Pp]ower[Tt]ools"
-[ "$os_type" = "rhel" ] && rp3="$erp=codeready-builder-for-rhel-8-*"
-
-if [ "$os_ver" = "7" ]; then
-  (
-    set -x
-    yum "$rp1" "$rp2" -y -q install systemd-devel libevent-devel fipscheck-devel >/dev/null
-  ) || exiterr2
-else
-  (
-    set -x
-    yum "$rp3" -y -q install systemd-devel libevent-devel fipscheck-devel >/dev/null
-  ) || exiterr2
-fi
 
 bigecho "Downloading Libreswan..."
 
